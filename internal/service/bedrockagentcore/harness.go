@@ -19,7 +19,7 @@ import (
 	"github.com/hashicorp/aws-sdk-go-base/v2/tfawserr"
 	"github.com/hashicorp/terraform-plugin-framework-jsontypes/jsontypes"
 	"github.com/hashicorp/terraform-plugin-framework-timeouts/resource/timeouts"
-	"github.com/hashicorp/terraform-plugin-framework-validators/float32validator"
+	"github.com/hashicorp/terraform-plugin-framework-validators/float64validator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/int32validator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/listvalidator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
@@ -102,6 +102,7 @@ func (r *harnessResource) Schema(ctx context.Context, request resource.SchemaReq
 				},
 				Validators: []validator.String{
 					stringvalidator.LengthBetween(1, 40),
+					stringvalidator.RegexMatches(regexache.MustCompile(`^[a-zA-Z][a-zA-Z0-9_]{0,39}$`), "must begin with a letter and contain only letters, numbers, and underscores"),
 				},
 			},
 			"max_iterations": schema.Int32Attribute{
@@ -113,6 +114,14 @@ func (r *harnessResource) Schema(ctx context.Context, request resource.SchemaReq
 			},
 			"max_tokens": schema.Int32Attribute{
 				Optional: true,
+				// The Update API retains the existing value when max_tokens is
+				// omitted ("if not specified, the existing value is retained"), so it
+				// cannot be cleared via update. Computed lets state absorb the retained
+				// server value instead of showing a perpetual "-> null" diff.
+				Computed: true,
+				PlanModifiers: []planmodifier.Int32{
+					int32planmodifier.UseStateForUnknown(),
+				},
 			},
 			names.AttrTags:    tftags.TagsAttribute(),
 			names.AttrTagsAll: tftags.TagsAttributeComputedOnly(),
@@ -220,6 +229,16 @@ func (r *harnessResource) Schema(ctx context.Context, request resource.SchemaReq
 							CustomType: fwtypes.NewListNestedObjectTypeOf[harnessBedrockModelConfigModel](ctx),
 							Validators: []validator.List{
 								listvalidator.SizeAtMost(1),
+								// Exactly one model config must be set. Attaching to a single
+								// block is sufficient: the validator runs even when this block
+								// is null and tallies every sibling, catching none-set (empty
+								// model {}) and multi-set (e.g. bedrock + litellm).
+								listvalidator.ExactlyOneOf(
+									path.MatchRelative().AtParent().AtName("bedrock_model_config"),
+									path.MatchRelative().AtParent().AtName("gemini_model_config"),
+									path.MatchRelative().AtParent().AtName("litellm_model_config"),
+									path.MatchRelative().AtParent().AtName("openai_model_config"),
+								),
 							},
 							NestedObject: schema.NestedBlockObject{
 								Attributes: map[string]schema.Attribute{
@@ -232,16 +251,19 @@ func (r *harnessResource) Schema(ctx context.Context, request resource.SchemaReq
 									"model_id": schema.StringAttribute{
 										Required: true,
 									},
-									"temperature": schema.Float32Attribute{
+									// Modeled as Float64 so AutoFlex uses the precise float32->Float64
+									// conversion (decimal.NewFromFloat32) and imports round-trip
+									// cleanly (0.7 stays 0.7, not 0.699999988...).
+									"temperature": schema.Float64Attribute{
 										Optional: true,
-										Validators: []validator.Float32{
-											float32validator.Between(0, 2),
+										Validators: []validator.Float64{
+											float64validator.Between(0, 2),
 										},
 									},
-									"top_p": schema.Float32Attribute{
+									"top_p": schema.Float64Attribute{
 										Optional: true,
-										Validators: []validator.Float32{
-											float32validator.Between(0, 1),
+										Validators: []validator.Float64{
+											float64validator.Between(0, 1),
 										},
 									},
 								},
@@ -267,16 +289,19 @@ func (r *harnessResource) Schema(ctx context.Context, request resource.SchemaReq
 									"model_id": schema.StringAttribute{
 										Required: true,
 									},
-									"temperature": schema.Float32Attribute{
+									// Modeled as Float64 so AutoFlex uses the precise float32->Float64
+									// conversion (decimal.NewFromFloat32) and imports round-trip
+									// cleanly (0.7 stays 0.7, not 0.699999988...).
+									"temperature": schema.Float64Attribute{
 										Optional: true,
-										Validators: []validator.Float32{
-											float32validator.Between(0, 2),
+										Validators: []validator.Float64{
+											float64validator.Between(0, 2),
 										},
 									},
-									"top_p": schema.Float32Attribute{
+									"top_p": schema.Float64Attribute{
 										Optional: true,
-										Validators: []validator.Float32{
-											float32validator.Between(0, 1),
+										Validators: []validator.Float64{
+											float64validator.Between(0, 1),
 										},
 									},
 									"top_k": schema.Int32Attribute{
@@ -314,16 +339,19 @@ func (r *harnessResource) Schema(ctx context.Context, request resource.SchemaReq
 									"model_id": schema.StringAttribute{
 										Required: true,
 									},
-									"temperature": schema.Float32Attribute{
+									// Modeled as Float64 so AutoFlex uses the precise float32->Float64
+									// conversion (decimal.NewFromFloat32) and imports round-trip
+									// cleanly (0.7 stays 0.7, not 0.699999988...).
+									"temperature": schema.Float64Attribute{
 										Optional: true,
-										Validators: []validator.Float32{
-											float32validator.Between(0, 2),
+										Validators: []validator.Float64{
+											float64validator.Between(0, 2),
 										},
 									},
-									"top_p": schema.Float32Attribute{
+									"top_p": schema.Float64Attribute{
 										Optional: true,
-										Validators: []validator.Float32{
-											float32validator.Between(0, 1),
+										Validators: []validator.Float64{
+											float64validator.Between(0, 1),
 										},
 									},
 								},
@@ -349,16 +377,19 @@ func (r *harnessResource) Schema(ctx context.Context, request resource.SchemaReq
 									"model_id": schema.StringAttribute{
 										Required: true,
 									},
-									"temperature": schema.Float32Attribute{
+									// Modeled as Float64 so AutoFlex uses the precise float32->Float64
+									// conversion (decimal.NewFromFloat32) and imports round-trip
+									// cleanly (0.7 stays 0.7, not 0.699999988...).
+									"temperature": schema.Float64Attribute{
 										Optional: true,
-										Validators: []validator.Float32{
-											float32validator.Between(0, 2),
+										Validators: []validator.Float64{
+											float64validator.Between(0, 2),
 										},
 									},
-									"top_p": schema.Float32Attribute{
+									"top_p": schema.Float64Attribute{
 										Optional: true,
-										Validators: []validator.Float32{
-											float32validator.Between(0, 1),
+										Validators: []validator.Float64{
+											float64validator.Between(0, 1),
 										},
 									},
 								},
@@ -1027,16 +1058,16 @@ func (m harnessModelConfigurationModel) Expand(ctx context.Context) (any, diag.D
 type harnessBedrockModelConfigModel struct {
 	MaxTokens   types.Int32   `tfsdk:"max_tokens"`
 	ModelID     types.String  `tfsdk:"model_id"`
-	Temperature types.Float32 `tfsdk:"temperature"`
-	TopP        types.Float32 `tfsdk:"top_p"`
+	Temperature types.Float64 `tfsdk:"temperature"`
+	TopP        types.Float64 `tfsdk:"top_p"`
 }
 
 type harnessGeminiModelConfigModel struct {
 	ApiKeyARN   fwtypes.ARN   `tfsdk:"api_key_arn"`
 	MaxTokens   types.Int32   `tfsdk:"max_tokens"`
 	ModelID     types.String  `tfsdk:"model_id"`
-	Temperature types.Float32 `tfsdk:"temperature"`
-	TopP        types.Float32 `tfsdk:"top_p"`
+	Temperature types.Float64 `tfsdk:"temperature"`
+	TopP        types.Float64 `tfsdk:"top_p"`
 	TopK        types.Int32   `tfsdk:"top_k"`
 }
 
@@ -1044,8 +1075,8 @@ type harnessOpenAIModelConfigModel struct {
 	ApiKeyARN   fwtypes.ARN   `tfsdk:"api_key_arn"`
 	MaxTokens   types.Int32   `tfsdk:"max_tokens"`
 	ModelID     types.String  `tfsdk:"model_id"`
-	Temperature types.Float32 `tfsdk:"temperature"`
-	TopP        types.Float32 `tfsdk:"top_p"`
+	Temperature types.Float64 `tfsdk:"temperature"`
+	TopP        types.Float64 `tfsdk:"top_p"`
 }
 
 type harnessLiteLLMModelConfigModel struct {
@@ -1053,8 +1084,8 @@ type harnessLiteLLMModelConfigModel struct {
 	ApiKeyARN   fwtypes.ARN   `tfsdk:"api_key_arn"`
 	MaxTokens   types.Int32   `tfsdk:"max_tokens"`
 	ModelID     types.String  `tfsdk:"model_id"`
-	Temperature types.Float32 `tfsdk:"temperature"`
-	TopP        types.Float32 `tfsdk:"top_p"`
+	Temperature types.Float64 `tfsdk:"temperature"`
+	TopP        types.Float64 `tfsdk:"top_p"`
 }
 
 // System prompt union.
