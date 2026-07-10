@@ -227,7 +227,9 @@ The `custom_jwt_authorizer` block supports the following:
 * `allowed_audience` - (Optional) Set of allowed audience values for JWT token validation.
 * `allowed_clients` - (Optional) Set of allowed client IDs for JWT token validation.
 * `allowed_scopes` - (Optional) Set of scopes that are allowed to access the token.
+* `allowed_workload_configuration` - (Optional) Configuration restricting which workloads may use this authorizer. Supports `hosting_environment` (Optional, 1-10 entries each with an `arn` argument) and `workload_identities` (Optional, 1-10 entries).
 * `custom_claim` - (Optional) Repeatable block to define a custom claim validation name, value, and operation. See [`custom_claim`](#custom_claim) below.
+* `private_endpoint_overrides` - (Optional) Overrides for the private endpoints used to reach the authorization server. Each entry supports `domain` (Required) and `private_endpoint` (Required). The `private_endpoint` block requires exactly one of `managed_vpc_resource` or `self_managed_lattice_resource`.
 
 ### `custom_claim`
 
@@ -299,6 +301,7 @@ The `network_mode_config` block supports the following:
 
 * `security_groups` - (Required) Security groups associated with the VPC configuration.
 * `subnets` - (Required) Subnets associated with the VPC configuration.
+* `require_service_s3_endpoint` - (Read-only) Whether a service-managed Amazon S3 gateway endpoint is provisioned in the VPC for the agent runtime. This value is managed by the service and cannot be set: it is rejected on both create and update. Agent runtimes created on or after the May 5, 2026 rollout do not include a service-managed Amazon S3 gateway.
 
 ### `protocol_configuration`
 

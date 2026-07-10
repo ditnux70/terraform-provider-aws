@@ -212,7 +212,7 @@ func (r *browserResource) Schema(ctx context.Context, request resource.SchemaReq
 					},
 					Blocks: map[string]schema.Block{
 						names.AttrVPCConfig: schema.ListNestedBlock{
-							CustomType: fwtypes.NewListNestedObjectTypeOf[vpcConfigModel](ctx),
+							CustomType: fwtypes.NewListNestedObjectTypeOf[vpcConfigNoS3EndpointModel](ctx),
 							Validators: []validator.List{
 								listvalidator.SizeAtMost(1),
 							},
@@ -575,8 +575,8 @@ type browserResourceModel struct {
 }
 
 type browserNetworkConfigurationModel struct {
-	NetworkMode fwtypes.StringEnum[awstypes.BrowserNetworkMode] `tfsdk:"network_mode"`
-	VPCConfig   fwtypes.ListNestedObjectValueOf[vpcConfigModel] `tfsdk:"vpc_config"`
+	NetworkMode fwtypes.StringEnum[awstypes.BrowserNetworkMode]             `tfsdk:"network_mode"`
+	VPCConfig   fwtypes.ListNestedObjectValueOf[vpcConfigNoS3EndpointModel] `tfsdk:"vpc_config"`
 }
 
 type recordingConfigModel struct {
