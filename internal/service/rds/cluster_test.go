@@ -2132,6 +2132,92 @@ func TestAccRDSCluster_ManagedMasterPassword_convertToManaged(t *testing.T) {
 	})
 }
 
+// TestAccRDSCluster_ManagedMasterPassword_convertFromManaged verifies that
+// disabling Secrets Manager management on a cluster that is currently managed
+// (master_user_secret non-empty) sends ManageMasterUserPassword=false and
+// succeeds. This validates the guard in the Update function permits the call
+// when master_user_secret is present.
+func TestAccRDSCluster_ManagedMasterPassword_convertFromManaged(t *testing.T) {
+	ctx := acctest.Context(t)
+	if testing.Short() {
+		t.Skip("skipping long-running test in short mode")
+	}
+
+	var dbCluster1, dbCluster2 types.DBCluster
+	rName := acctest.RandomWithPrefix(t, acctest.ResourcePrefix)
+	resourceName := "aws_rds_cluster.test"
+
+	acctest.ParallelTest(ctx, t, resource.TestCase{
+		PreCheck:                 func() { acctest.PreCheck(ctx, t) },
+		ErrorCheck:               acctest.ErrorCheck(t, names.RDSServiceID),
+		ProtoV5ProviderFactories: acctest.ProtoV5ProviderFactories,
+		CheckDestroy:             testAccCheckClusterDestroy(ctx, t),
+		Steps: []resource.TestStep{
+			{
+				Config: testAccClusterConfig_managedMasterPassword(rName),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					testAccCheckClusterExists(ctx, t, resourceName, &dbCluster1),
+					resource.TestCheckResourceAttr(resourceName, "manage_master_user_password", acctest.CtTrue),
+					resource.TestCheckResourceAttr(resourceName, "master_user_secret.#", acctest.Ct1),
+				),
+			},
+			{
+				Config: testAccClusterConfig_managedMasterPasswordConvertToStatic(rName),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					testAccCheckClusterExists(ctx, t, resourceName, &dbCluster2),
+					resource.TestCheckNoResourceAttr(resourceName, "manage_master_user_password"),
+					resource.TestCheckResourceAttr(resourceName, "master_user_secret.#", acctest.Ct0),
+				),
+			},
+		},
+	})
+}
+
+// TestAccRDSCluster_ManagedMasterPassword_snapshotRestoreNoManagement verifies
+// that restoring a cluster from a snapshot and then leaving manage_master_user_password
+// unset (cluster is not managed) does not trigger a spurious ModifyDBCluster call
+// with ManageMasterUserPassword=false. The guard introduced alongside PR #40538's
+// equivalent fix for aws_db_instance prevents this InvalidParameterCombination error.
+func TestAccRDSCluster_ManagedMasterPassword_snapshotRestoreNoManagement(t *testing.T) {
+	ctx := acctest.Context(t)
+	if testing.Short() {
+		t.Skip("skipping long-running test in short mode")
+	}
+
+	var dbCluster types.DBCluster
+	rName := acctest.RandomWithPrefix(t, acctest.ResourcePrefix)
+	sourceResourceName := "aws_rds_cluster.source"
+	resourceName := "aws_rds_cluster.test"
+
+	acctest.ParallelTest(ctx, t, resource.TestCase{
+		PreCheck:                 func() { acctest.PreCheck(ctx, t) },
+		ErrorCheck:               acctest.ErrorCheck(t, names.RDSServiceID),
+		ProtoV5ProviderFactories: acctest.ProtoV5ProviderFactories,
+		CheckDestroy:             testAccCheckClusterDestroy(ctx, t),
+		Steps: []resource.TestStep{
+			{
+				// Source cluster uses managed password; restored cluster deliberately
+				// uses a static password instead. After the restore the cluster is
+				// not managed by RDS, so master_user_secret is empty. A subsequent
+				// plan must not emit ManageMasterUserPassword=false.
+				Config: testAccClusterConfig_snapshotRestoreNoManagement(rName),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					testAccCheckClusterExists(ctx, t, sourceResourceName, &dbCluster),
+					testAccCheckClusterExists(ctx, t, resourceName, &dbCluster),
+					resource.TestCheckResourceAttr(resourceName, "master_user_secret.#", acctest.Ct0),
+				),
+			},
+			{
+				// Re-apply the same configuration. With the bug, this second apply
+				// would send ManageMasterUserPassword=false and receive
+				// InvalidParameterCombination from ModifyDBCluster.
+				Config:   testAccClusterConfig_snapshotRestoreNoManagement(rName),
+				PlanOnly: true,
+			},
+		},
+	})
+}
+
 func TestAccRDSCluster_port(t *testing.T) {
 	ctx := acctest.Context(t)
 	var dbCluster1, dbCluster2 types.DBCluster
@@ -4321,6 +4407,44 @@ resource "aws_rds_cluster" "test" {
   master_username             = "tfacctest"
   engine                      = %[2]q
   skip_final_snapshot         = true
+}
+`, rName, tfrds.ClusterEngineAuroraMySQL)
+}
+
+func testAccClusterConfig_managedMasterPasswordConvertToStatic(rName string) string {
+	return fmt.Sprintf(`
+resource "aws_rds_cluster" "test" {
+  cluster_identifier  = %[1]q
+  database_name       = "test"
+  master_password     = "barbarbarbar"
+  master_username     = "tfacctest"
+  engine              = %[2]q
+  skip_final_snapshot = true
+}
+`, rName, tfrds.ClusterEngineAuroraMySQL)
+}
+
+func testAccClusterConfig_snapshotRestoreNoManagement(rName string) string {
+	return fmt.Sprintf(`
+resource "aws_rds_cluster" "source" {
+  cluster_identifier          = "%[1]s-source"
+  engine                      = %[2]q
+  manage_master_user_password = true
+  master_username             = "tfacctest"
+  skip_final_snapshot         = true
+}
+
+resource "aws_db_cluster_snapshot" "test" {
+  db_cluster_identifier          = aws_rds_cluster.source.id
+  db_cluster_snapshot_identifier = %[1]q
+}
+
+resource "aws_rds_cluster" "test" {
+  cluster_identifier  = %[1]q
+  engine              = %[2]q
+  master_password     = "barbarbarbar"
+  skip_final_snapshot = true
+  snapshot_identifier = aws_db_cluster_snapshot.test.id
 }
 `, rName, tfrds.ClusterEngineAuroraMySQL)
 }

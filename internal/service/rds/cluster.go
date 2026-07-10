@@ -1751,7 +1751,18 @@ func resourceClusterUpdate(ctx context.Context, d *schema.ResourceData, meta any
 		}
 
 		if d.HasChange("manage_master_user_password") {
-			input.ManageMasterUserPassword = aws.Bool(d.Get("manage_master_user_password").(bool))
+			if d.Get("manage_master_user_password").(bool) {
+				// Enabling Secrets Manager management is always valid.
+				input.ManageMasterUserPassword = aws.Bool(true)
+			} else if v := d.Get("master_user_secret").([]any); len(v) > 0 {
+				// Only send ManageMasterUserPassword=false when the cluster is currently
+				// managed by RDS (master_user_secret is populated after the last refresh).
+				// Sending false to a cluster where Secrets Manager was never active —
+				// e.g. after a snapshot restore where the source had managed passwords
+				// but the restored cluster did not inherit that state — causes
+				// InvalidParameterCombination from ModifyDBCluster.
+				input.ManageMasterUserPassword = aws.Bool(false)
+			}
 		}
 
 		if d.HasChange("master_password") {
@@ -1864,6 +1875,13 @@ func resourceClusterUpdate(ctx context.Context, d *schema.ResourceData, meta any
 		)
 
 		if err != nil {
+			// manage_master_user_password is a virtual attribute not returned by the
+			// RDS API on read. If the update fails, revert it in state so the next
+			// plan reflects the value that was actually in effect before the attempt.
+			if input.ManageMasterUserPassword != nil {
+				old, _ := d.GetChange("manage_master_user_password")
+				d.Set("manage_master_user_password", old.(bool))
+			}
 			return sdkdiag.AppendErrorf(diags, "updating RDS Cluster (%s): %s", d.Id(), err)
 		}
 
