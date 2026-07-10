@@ -3,6 +3,7 @@
 BUG FIXES:
 
 * resource/aws_config_organization_managed_rule: Fix `interface conversion: interface {} is nil, not *configservice.DescribeOrganizationConfigRuleStatusesOutput` panics on delete ([#48845](https://github.com/hashicorp/terraform-provider-aws/issues/48845))
+* resource/aws_rds_cluster: Fix `InvalidParameterCombination: You can't set ManageMasterUserPassword to false because the master user password is not currently managed by RDS` error when `manage_master_user_password` transitions to `false` on a cluster whose Secrets Manager integration was never active (e.g. after a snapshot restore). The provider now checks `master_user_secret` before sending `ManageMasterUserPassword=false`, and reverts the virtual attribute in state if the API call fails ([#XXXXX](https://github.com/hashicorp/terraform-provider-aws/issues/XXXXX))
 
 ## 6.54.0 (July 8, 2026)
 
