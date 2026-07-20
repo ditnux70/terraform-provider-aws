@@ -8,7 +8,7 @@ godebug tlsmlkem=0
 
 require (
 	github.com/ProtonMail/go-crypto v1.2.0
-	github.com/YakDriver/go-version v0.1.0
+	github.com/YakDriver/go-version v0.2.0
 	github.com/YakDriver/regexache v0.24.0
 	github.com/aws/aws-sdk-go-v2 v1.36.3
 	github.com/aws/aws-sdk-go-v2/config v1.29.15
@@ -281,7 +281,7 @@ require (
 	github.com/hashicorp/go-hclog v1.6.3
 	github.com/hashicorp/go-multierror v1.1.1
 	github.com/hashicorp/go-uuid v1.0.3
-	github.com/hashicorp/go-version v1.7.0
+	github.com/hashicorp/go-version v1.9.0
 	github.com/hashicorp/hcl/v2 v2.23.0
 	github.com/hashicorp/terraform-json v0.25.0
 	github.com/hashicorp/terraform-plugin-framework v1.15.0
